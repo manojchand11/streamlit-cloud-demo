@@ -7,7 +7,7 @@ import streamlit as st
 
 
 # ---------------------------------------------------------------------
-# 1. Page configuration
+# 1. PAGE CONFIGURATION
 # ---------------------------------------------------------------------
 st.set_page_config(
     page_title="FY31 State-wise Dispatch & Capacity Dashboard",
@@ -19,14 +19,43 @@ st.title("⚡ FY31 State-wise Dispatch & Capacity Dashboard")
 
 
 # ---------------------------------------------------------------------
-# 2. Data file location
-#    Keep the Excel workbook in the same GitHub folder as app.py.
+# 2. FILE PATHS AND COLOUR SCHEMES
+# Keep app.py and the Excel workbook in the same GitHub repository folder.
 # ---------------------------------------------------------------------
-EXCEL_FILE = Path(__file__).resolve().parent / "S2_Dispatch_FY31_statewise_output.xlsx"
+BASE_DIR = Path(__file__).resolve().parent
+EXCEL_FILE = BASE_DIR / "S2_Dispatch_FY31_statewise_output.xlsx"
+
+# Consistent technology colours across all charts that display technology.
+# Thermal is included in grey because the existing classification logic
+# identifies thermal generation separately from an explicitly named Coal row.
+TECHNOLOGY_COLORS = {
+    "Solar": "#FFD700",       # Yellow
+    "Wind": "#2E8B57",        # Green
+    "Nuclear": "#000000",     # Black
+    "Coal": "#808080",        # Grey
+    "Thermal": "#808080",     # Grey (existing workbook classification)
+    "DRE": "#90EE90",         # Light green
+    "Hydro": "#87CEFA",       # Light blue
+    "PSP": "#800080",         # Purple
+    "BESS": "#FF69B4",        # Pink
+    "Other RE": "#FF8C00",    # Orange (fallback category)
+    "Other": "#A9A9A9",       # Light grey (fallback category)
+}
+
+STATUS_COLORS = {
+    "Existing": "#4C78A8",
+    "Upcoming": "#F2A541",
+    "Candidates": "#72B7B2",
+    "Retirement": "#E45756",
+    "Other": "#A0A0A0",
+}
 
 
+# ---------------------------------------------------------------------
+# 3. CLASSIFICATION AND DATA-UTILITY FUNCTIONS
+# ---------------------------------------------------------------------
 def classify_generator(category: str) -> tuple[str, str]:
-    """Return technology and status from the generator category text."""
+    """Identify generator technology and project status."""
     text = str(category).strip().lower()
 
     if "existing" in text:
@@ -40,18 +69,22 @@ def classify_generator(category: str) -> tuple[str, str]:
     else:
         status = "Other"
 
-    if "thermal" in text:
-        technology = "Thermal"
+    # Check specific technologies before generic categories.
+    if "nuclear" in text:
+        technology = "Nuclear"
     elif "solar" in text:
         technology = "Solar"
     elif "wind" in text:
         technology = "Wind"
     elif "hydro" in text:
         technology = "Hydro"
-    elif "nuclear" in text:
-        technology = "Nuclear"
     elif "dre" in text:
         technology = "DRE"
+    elif "coal" in text:
+        technology = "Coal"
+    elif "thermal" in text:
+        # Retained as Thermal if that is how the source workbook labels it.
+        technology = "Thermal"
     elif "other re" in text:
         technology = "Other RE"
     else:
@@ -61,7 +94,7 @@ def classify_generator(category: str) -> tuple[str, str]:
 
 
 def classify_storage(category: str) -> tuple[str, str]:
-    """Return storage technology and status from the category text."""
+    """Identify storage technology and project status."""
     text = str(category).strip().lower()
 
     if "existing" in text:
@@ -78,7 +111,7 @@ def classify_storage(category: str) -> tuple[str, str]:
 
 
 def numeric_value(value) -> float:
-    """Convert Excel values to floats, treating blank cells as zero."""
+    """Convert Excel values to numbers; treat blanks/non-numeric cells as zero."""
     if value is None or value == "":
         return 0.0
     try:
@@ -87,8 +120,18 @@ def numeric_value(value) -> float:
         return 0.0
 
 
+def apply_number_format(fig, y_title: str):
+    """Apply consistent axis formatting to a Plotly chart."""
+    fig.update_layout(
+        yaxis_title=y_title,
+        yaxis=dict(tickformat=","),
+        margin=dict(t=55, b=45),
+    )
+    return fig
+
+
 # ---------------------------------------------------------------------
-# 3. Load and process workbook
+# 4. LOAD AND PROCESS THE EXCEL WORKBOOK
 # ---------------------------------------------------------------------
 @st.cache_data(show_spinner="Loading and processing the Excel workbook...")
 def load_and_process_data(file_path: str):
@@ -96,9 +139,9 @@ def load_and_process_data(file_path: str):
 
     if not workbook_path.is_file():
         raise FileNotFoundError(
-            f"Excel workbook not found at: {workbook_path}. "
-            "Ensure S2_Dispatch_FY31_statewise_output.xlsx is uploaded "
-            "to the GitHub repository in the same folder as app.py."
+            f"Excel workbook not found: {workbook_path}\n\n"
+            "Upload S2_Dispatch_FY31_statewise_output.xlsx to the same "
+            "GitHub repository folder as app.py."
         )
 
     generator_records = []
@@ -115,16 +158,16 @@ def load_and_process_data(file_path: str):
             worksheet = workbook[state]
             rows = list(worksheet.iter_rows(values_only=True))
 
-            # Find rows whose first cell is exactly "Collection".
+            # Locate the Collection header rows in this worksheet.
             header_indices = [
                 index
                 for index, row in enumerate(rows)
                 if row and str(row[0]).strip() == "Collection"
             ]
 
-            # ---------------------------------------------------------
-            # Generator table
-            # ---------------------------------------------------------
+            # -------------------------
+            # Generator capacity table
+            # -------------------------
             if header_indices:
                 generator_header_index = header_indices[0]
                 generator_headers = list(rows[generator_header_index])
@@ -136,7 +179,7 @@ def load_and_process_data(file_path: str):
                     )
                 except ValueError as error:
                     raise ValueError(
-                        f"Generator table headers not found in worksheet "
+                        f"Generator table headers are missing in worksheet "
                         f"'{state}'. Expected 'Category' and "
                         "'Installed Capacity (MW)'."
                     ) from error
@@ -166,9 +209,9 @@ def load_and_process_data(file_path: str):
                             }
                         )
 
-            # ---------------------------------------------------------
-            # Storage table
-            # ---------------------------------------------------------
+            # -------------------------
+            # Storage capacity table
+            # -------------------------
             if len(header_indices) >= 2:
                 storage_header_index = header_indices[1]
                 storage_headers = list(rows[storage_header_index])
@@ -180,7 +223,7 @@ def load_and_process_data(file_path: str):
                     )
                 except ValueError as error:
                     raise ValueError(
-                        f"Storage table headers not found in worksheet "
+                        f"Storage table headers are missing in worksheet "
                         f"'{state}'. Expected 'Category' and "
                         "'Installed Capacity (MWh)'."
                     ) from error
@@ -216,16 +259,16 @@ def load_and_process_data(file_path: str):
     )
 
     if not df_gen.empty:
-        classifications = df_gen["Raw_Category"].apply(classify_generator)
+        classified = df_gen["Raw_Category"].apply(classify_generator)
         df_gen[["Technology", "Status"]] = pd.DataFrame(
-            classifications.tolist(),
+            classified.tolist(),
             index=df_gen.index,
         )
 
     if not df_stor.empty:
-        classifications = df_stor["Raw_Category"].apply(classify_storage)
+        classified = df_stor["Raw_Category"].apply(classify_storage)
         df_stor[["Technology", "Status"]] = pd.DataFrame(
-            classifications.tolist(),
+            classified.tolist(),
             index=df_stor.index,
         )
 
@@ -233,7 +276,7 @@ def load_and_process_data(file_path: str):
 
 
 # ---------------------------------------------------------------------
-# 4. Load data and show a useful error if anything goes wrong
+# 5. LOAD DATA AND HANDLE ERRORS
 # ---------------------------------------------------------------------
 try:
     df_gen, df_stor = load_and_process_data(str(EXCEL_FILE))
@@ -244,14 +287,14 @@ except Exception as error:
 
 if df_gen.empty:
     st.error(
-        "No generator records were found in the workbook. "
-        "Please check the worksheet layout and the 'Collection' headers."
+        "No generator records were found. Check the workbook's worksheets "
+        "and the 'Collection' header rows."
     )
     st.stop()
 
 
 # ---------------------------------------------------------------------
-# 5. Sidebar navigation
+# 6. SIDEBAR NAVIGATION
 # ---------------------------------------------------------------------
 st.sidebar.title("⚡ FY31 Capacity Dashboard")
 
@@ -265,9 +308,19 @@ st.sidebar.info(
     "Source: `S2_Dispatch_FY31_statewise_output.xlsx` (PLEXOS Model)"
 )
 
+st.sidebar.markdown("### Technology colour key")
+for technology, colour in TECHNOLOGY_COLORS.items():
+    st.sidebar.markdown(
+        f'<div style="display:flex;align-items:center;margin:4px 0;">'
+        f'<span style="background:{colour};width:13px;height:13px;'
+        f'display:inline-block;border:1px solid #777;margin-right:8px;'
+        f'border-radius:2px;"></span>{technology}</div>',
+        unsafe_allow_html=True,
+    )
+
 
 # ---------------------------------------------------------------------
-# 6. VIEW 1 — STATE EXPLORER
+# 7. VIEW 1 — STATE EXPLORER
 # ---------------------------------------------------------------------
 if page == "State Explorer":
     st.title("🗺️ State-wise Installed Capacity Explorer")
@@ -325,6 +378,7 @@ if page == "State Explorer":
             y="Capacity_MW",
             text="Capacity_MW",
             color="Technology",
+            color_discrete_map=TECHNOLOGY_COLORS,
         )
         fig_technology.update_traces(
             texttemplate="%{text:,.1f}",
@@ -353,11 +407,9 @@ if page == "State Explorer":
             y="Capacity_MW",
             color="Status",
             barmode="group",
+            color_discrete_map=STATUS_COLORS,
         )
-        fig_status.update_layout(
-            yaxis_title="Capacity (MW)",
-            yaxis=dict(tickformat=","),
-        )
+        apply_number_format(fig_status, "Capacity (MW)")
         st.plotly_chart(fig_status, use_container_width=True)
 
     # Storage charts and table
@@ -381,6 +433,7 @@ if page == "State Explorer":
                 y="Capacity_MWh",
                 text="Capacity_MWh",
                 color="Technology",
+                color_discrete_map=TECHNOLOGY_COLORS,
                 title=(
                     "Storage Energy Capacity by Technology "
                     f"({selected_state})"
@@ -414,12 +467,10 @@ if page == "State Explorer":
                 y="Capacity_MWh",
                 color="Status",
                 barmode="group",
+                color_discrete_map=STATUS_COLORS,
                 title=f"Storage Capacity by Status ({selected_state})",
             )
-            fig_storage_status.update_layout(
-                yaxis_title="Capacity (MWh)",
-                yaxis=dict(tickformat=","),
-            )
+            apply_number_format(fig_storage_status, "Capacity (MWh)")
             st.plotly_chart(
                 fig_storage_status,
                 use_container_width=True,
@@ -432,7 +483,7 @@ if page == "State Explorer":
 
 
 # ---------------------------------------------------------------------
-# 7. VIEW 2 — ALL-INDIA OVERVIEW
+# 8. VIEW 2 — ALL-INDIA OVERVIEW
 # ---------------------------------------------------------------------
 elif page == "All-India Overview":
     st.title("🌐 All-India FY31 Capacity Overview")
@@ -459,7 +510,7 @@ elif page == "All-India Overview":
 
     st.markdown("---")
 
-    # State-wise stacked capacity chart
+    # State-wise stacked generation capacity chart
     st.subheader("📈 State-wise Installed Capacity Breakdown (MW)")
 
     state_aggregate = (
@@ -475,6 +526,7 @@ elif page == "All-India Overview":
         y="Capacity_MW",
         color="Technology",
         barmode="stack",
+        color_discrete_map=TECHNOLOGY_COLORS,
     )
     fig_state.update_layout(
         xaxis_title="State / Region",
@@ -532,6 +584,7 @@ elif page == "All-India Overview":
                 y="Capacity_MW",
                 text="Capacity_MW",
                 color="Technology",
+                color_discrete_map=TECHNOLOGY_COLORS,
                 title="Filtered Capacity by Technology (MW)",
             )
             fig_filtered_technology.update_traces(
@@ -562,16 +615,16 @@ elif page == "All-India Overview":
                 y="Capacity_MW",
                 text="Capacity_MW",
                 color="Status",
+                color_discrete_map=STATUS_COLORS,
                 title="Filtered Capacity by Status (MW)",
             )
             fig_filtered_status.update_traces(
                 texttemplate="%{text:,.1f}",
                 textposition="outside",
             )
-            fig_filtered_status.update_layout(
-                showlegend=False,
-                yaxis_title="Capacity (MW)",
-                yaxis=dict(tickformat=","),
+            apply_number_format(
+                fig_filtered_status,
+                "Capacity (MW)",
             )
             st.plotly_chart(
                 fig_filtered_status,
