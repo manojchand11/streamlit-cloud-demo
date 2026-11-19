@@ -484,11 +484,15 @@ st.sidebar.caption("FY36: S2_Dispatch_FY36_statewise_output.xlsx")
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Technology colour key")
 for technology, colour in TECHNOLOGY_COLORS.items():
+    display_label = (
+        "Other RE (Biomass/Bagasse, Hybrid, RTC, FDRE & DRE)"
+        if technology == "Other RE" else technology
+    )
     st.sidebar.markdown(
         f'<div style="display:flex;align-items:center;margin:4px 0;">'
         f'<span style="background:{colour};width:13px;height:13px;'
         f'display:inline-block;border:1px solid #777;margin-right:8px;'
-        f'border-radius:2px;"></span>{technology}</div>',
+        f'border-radius:2px;flex-shrink:0;"></span>{display_label}</div>',
         unsafe_allow_html=True,
     )
 
@@ -546,11 +550,11 @@ if view == "State Explorer":
 
         st.subheader(f"{selected_state} — {year}")
         a, b, c, d, e = st.columns(5)
-        a.metric("Total Generation", f"{total:,.1f} MW")
-        b.metric("Existing", f"{existing:,.1f} MW")
-        c.metric("Upcoming", f"{upcoming:,.1f} MW")
-        d.metric("Candidates", f"{candidates:,.1f} MW")
-        e.metric("Retirement", f"{retirement:,.1f} MW")
+        a.metric("Total Generation", f"{total:,.0f} MW")
+        b.metric("Existing", f"{existing:,.0f} MW")
+        c.metric("Upcoming", f"{upcoming:,.0f} MW")
+        d.metric("Candidates", f"{candidates:,.0f} MW")
+        e.metric("Retirement", f"{retirement:,.0f} MW")
 
         left, right = st.columns(2)
 
@@ -1006,11 +1010,11 @@ elif view == "All State Overview":
     retirement = df_gen.loc[df_gen["Status"] == "Retirement", "Capacity_MW"].sum()
 
     k1, k2, k3, k4, k5 = st.columns(5)
-    k1.metric("Total Generation", f"{total:,.1f} MW")
-    k2.metric("Existing", f"{existing:,.1f} MW")
-    k3.metric("Upcoming", f"{upcoming:,.1f} MW")
-    k4.metric("Candidates", f"{candidates:,.1f} MW")
-    k5.metric("Retirement", f"{retirement:,.1f} MW")
+    k1.metric("Total Generation", f"{total:,.0f} MW")
+    k2.metric("Existing", f"{existing:,.0f} MW")
+    k3.metric("Upcoming", f"{upcoming:,.0f} MW")
+    k4.metric("Candidates", f"{candidates:,.0f} MW")
+    k5.metric("Retirement", f"{retirement:,.0f} MW")
 
     st.markdown("---")
     st.subheader(f"State-wise Installed Generation Capacity — {year_choice}")
@@ -1263,11 +1267,11 @@ elif view == "All India Overview":
 
         st.subheader(f"National Generation Capacity — {india_year_choice}")
         ik1, ik2, ik3, ik4, ik5 = st.columns(5)
-        ik1.metric("Total Generation", f"{india_total:,.1f} MW")
-        ik2.metric("Existing", f"{india_existing:,.1f} MW")
-        ik3.metric("Upcoming", f"{india_upcoming:,.1f} MW")
-        ik4.metric("Candidates", f"{india_candidates:,.1f} MW")
-        ik5.metric("Retirement", f"{india_retirement:,.1f} MW")
+        ik1.metric("Total Generation", f"{india_total:,.0f} MW")
+        ik2.metric("Existing", f"{india_existing:,.0f} MW")
+        ik3.metric("Upcoming", f"{india_upcoming:,.0f} MW")
+        ik4.metric("Candidates", f"{india_candidates:,.0f} MW")
+        ik5.metric("Retirement", f"{india_retirement:,.0f} MW")
 
         st.subheader(f"National Generation Capacity Mix — {india_year_choice}")
         mix = india_gen.groupby("Technology", as_index=False)["Capacity_MW"].sum()
